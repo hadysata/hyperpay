@@ -46,10 +46,9 @@ class HyperpayPlugin : FlutterPlugin, MethodCallHandler, ITransactionListener, A
     // private lateinit var mContext: Context
     private lateinit var mApplicationContext: Context
     private lateinit var mActivity: Activity
-    private lateinit var provider: OppPaymentProvider
 
     private var checkoutID = ""
-    private var mode = provider.providerMode.name
+    private var mode = ""
     private var brand = Brand.UNKNOWN
     private var cardHolder: String = ""
     private var cardNumber: String = ""
@@ -58,9 +57,7 @@ class HyperpayPlugin : FlutterPlugin, MethodCallHandler, ITransactionListener, A
     private var cvv: String = ""
 
     private var transaction: Transaction? = null
-    private var paymentResult: MethodChannel.Result? = null
     private var providerBinder: IProviderBinder? = null
-    // private var shopperResultURL: String? = ""
     private var Result: MethodChannel.Result? = null
 
     override fun onAttachedToEngine(@NonNull flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
@@ -77,8 +74,6 @@ class HyperpayPlugin : FlutterPlugin, MethodCallHandler, ITransactionListener, A
             }
             true
         }
-        provider = OppPaymentProvider(mActivity, Connect.ProviderMode.TEST)
-
         try {
             val intent = Intent(mApplicationContext, ConnectService::class.java)
             mActivity.startService(intent)
@@ -116,19 +111,9 @@ class HyperpayPlugin : FlutterPlugin, MethodCallHandler, ITransactionListener, A
 
             providerBinder = service as IProviderBinder
             providerBinder!!.addTransactionListener(this@HyperpayPlugin)
-            try {
-                if (mode.equals("LIVE")) {
-                    providerBinder!!.initializeProvider(Connect.ProviderMode.LIVE)
-                } else {
-                    providerBinder!!.initializeProvider(Connect.ProviderMode.TEST)
-                }
-            } catch (e: PaymentException) {
-                paymentResult?.error(
-                    "0.3",
-                    e.localizedMessage,
-                    ""
-                )
-            }
+
+            providerBinder!!.initializeProvider(Connect.ProviderMode.TEST);
+
         }
 
         override fun onServiceDisconnected(name: ComponentName) {
@@ -151,23 +136,22 @@ class HyperpayPlugin : FlutterPlugin, MethodCallHandler, ITransactionListener, A
             expiryYear = (card["expiryYear"] as String?)!!
             cvv = (card["cvv"] as String?)!!
 
-            if (mode == "LIVE") {
-                provider.providerMode = Connect.ProviderMode.LIVE
-            }
+//            if (mode == "LIVE") {
+//                provider.providerMode = Connect.ProviderMode.LIVE
+//            }
 
 
             when (brand) {
                 // If the brand is not provided it returns an error result
                 Brand.UNKNOWN -> result.error(
-                    "0.1",
-                    "Please provide a valid brand",
-                    ""
+                        "0.1",
+                        "Please provide a valid brand",
+                        ""
                 )
                 else -> {
                     checkCreditCardValid()
 
-                    try {
-                        val paymentParams: PaymentParams = CardPaymentParams(
+                    val paymentParams: PaymentParams = CardPaymentParams(
                             checkoutID,
                             brand.name,
                             cardNumber,
@@ -175,27 +159,23 @@ class HyperpayPlugin : FlutterPlugin, MethodCallHandler, ITransactionListener, A
                             expiryMonth,
                             expiryYear,
                             cvv
-                        )
+                    )
 
-                        Log.d("Banana", paymentParams.checkoutId + paymentParams.paymentBrand)
-                        // Set shopper result URL
-                        paymentParams.shopperResultUrl =
+                    // Set shopper result URL
+                    paymentParams.shopperResultUrl =
                             "${mActivity.packageName}://result"
 
-                        Log.d("Banana", "${paymentParams.shopperResultUrl}")
+                    try {
 
                         val transaction = Transaction(paymentParams)
 
-                        Log.d("Banana", "${transaction.redirectUrl}")
-
                         providerBinder?.submitTransaction(transaction)
 
-                        Log.d("Banana", "${providerBinder?.isProviderInitialized}")
                     } catch (e: PaymentException) {
                         result.error(
-                            "0.3",
-                            e.localizedMessage,
-                            ""
+                                "0.3",
+                                e.localizedMessage,
+                                ""
                         )
                     }
                 }
@@ -211,33 +191,33 @@ class HyperpayPlugin : FlutterPlugin, MethodCallHandler, ITransactionListener, A
     private fun checkCreditCardValid() {
         if (!CardPaymentParams.isNumberValid(cardNumber)) {
             error(
-                "1.1",
-                "Card number is not valid for brand ${brand.name}",
-                ""
+                    "1.1",
+                    "Card number is not valid for brand ${brand.name}",
+                    ""
             )
         } else if (!CardPaymentParams.isHolderValid(cardHolder)) {
             error(
-                "1.2",
-                "Holder name is not valid",
-                ""
+                    "1.2",
+                    "Holder name is not valid",
+                    ""
             )
         } else if (!CardPaymentParams.isExpiryMonthValid(expiryMonth)) {
             error(
-                "1.3",
-                "Expiry month is not valid",
-                ""
+                    "1.3",
+                    "Expiry month is not valid",
+                    ""
             )
         } else if (!CardPaymentParams.isExpiryYearValid(expiryYear)) {
             error(
-                "1.4",
-                "Expiry year is not valid",
-                ""
+                    "1.4",
+                    "Expiry year is not valid",
+                    ""
             )
         } else if (!CardPaymentParams.isCvvValid(cvv)) {
             error(
-                "1.5",
-                "CVV is not valid",
-                ""
+                    "1.5",
+                    "CVV is not valid",
+                    ""
             )
         }
     }
@@ -268,9 +248,9 @@ class HyperpayPlugin : FlutterPlugin, MethodCallHandler, ITransactionListener, A
 
     override fun transactionFailed(p0: Transaction?, p1: PaymentError?) {
         error(
-            "${p1?.errorCode}",
-            "Error ☹️ + ${p1?.errorMessage}",
-            "${p1?.errorInfo}"
+                "${p1?.errorCode}",
+                "Error ☹️ + ${p1?.errorMessage}",
+                "${p1?.errorInfo}"
         )
     }
 
