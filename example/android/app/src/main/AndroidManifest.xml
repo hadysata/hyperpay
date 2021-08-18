@@ -47,8 +47,5 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
-        <service
-            android:name="com.oppwa.mobile.connect.service.ConnectService"
-            android:exported="false" />
     </application>
 </manifest>

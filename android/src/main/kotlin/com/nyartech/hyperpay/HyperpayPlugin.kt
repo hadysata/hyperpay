@@ -25,19 +25,16 @@ import com.oppwa.mobile.connect.provider.Transaction
 import com.oppwa.mobile.connect.provider.TransactionType
 import com.oppwa.mobile.connect.service.ConnectService
 import com.oppwa.mobile.connect.service.IProviderBinder
-import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
-import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
 
 /** HyperpayPlugin */
-class HyperpayPlugin : FlutterActivity(), FlutterPlugin, MethodCallHandler,
-    ITransactionListener, MethodChannel.Result, ActivityAware {
+class HyperpayPlugin : FlutterPlugin, MethodCallHandler, ITransactionListener, ActivityAware {
     private val TAG = "HyperpayPlugin"
 
     /// The MethodChannel that will the communication between Flutter and native Android
@@ -49,10 +46,9 @@ class HyperpayPlugin : FlutterActivity(), FlutterPlugin, MethodCallHandler,
     // private lateinit var mContext: Context
     private lateinit var mApplicationContext: Context
     private lateinit var mActivity: Activity
+    private lateinit var provider: OppPaymentProvider
 
     private var checkoutID = ""
-    private var provider: OppPaymentProvider =
-        OppPaymentProvider(context, Connect.ProviderMode.TEST)
     private var mode = provider.providerMode.name
     private var brand = Brand.UNKNOWN
     private var cardHolder: String = ""
@@ -64,34 +60,54 @@ class HyperpayPlugin : FlutterActivity(), FlutterPlugin, MethodCallHandler,
     private var transaction: Transaction? = null
     private var paymentResult: MethodChannel.Result? = null
     private var providerBinder: IProviderBinder? = null
-    private var shopperResultURL: String? = ""
+    // private var shopperResultURL: String? = ""
     private var Result: MethodChannel.Result? = null
 
     override fun onAttachedToEngine(@NonNull flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
-        onAttachedToEngine(
-            flutterPluginBinding.applicationContext,
-            flutterPluginBinding.binaryMessenger
-        )
+        channel = MethodChannel(flutterPluginBinding.binaryMessenger, "hyperpay")
+        channel.setMethodCallHandler(this)
+        mApplicationContext = flutterPluginBinding.applicationContext
     }
 
-    private fun onAttachedToEngine(applicationContext: Context, messenger: BinaryMessenger) {
-        this.mApplicationContext = applicationContext
-        channel = MethodChannel(messenger, "hyperpay");
-        channel.setMethodCallHandler(this);
+    override fun onAttachedToActivity(binding: ActivityPluginBinding) {
+        mActivity = binding.activity;
+        binding.addOnNewIntentListener {
+            if (it.scheme == mActivity.packageName) {
+                success("Success: asynchronous 🎉")
+            }
+            true
+        }
+        provider = OppPaymentProvider(mActivity, Connect.ProviderMode.TEST)
+
+        try {
+            val intent = Intent(mApplicationContext, ConnectService::class.java)
+            mActivity.startService(intent)
+            mActivity.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+        } catch (e: java.lang.Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    override fun onDetachedFromActivityForConfigChanges() {
+        TODO("Not yet implemented")
+    }
+
+    override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
+        TODO("Not yet implemented")
+    }
+
+    override fun onDetachedFromActivity() {
+        TODO("Not yet implemented")
     }
 
     // Handling result options
     private val handler: Handler = Handler(Looper.getMainLooper())
-    override fun success(result: Any?) {
+    private fun success(result: Any?) {
         handler.post { Result!!.success(result) }
     }
 
-    override fun error(errorCode: String?, errorMessage: String?, errorDetails: Any?) {
+    private fun error(errorCode: String?, errorMessage: String?, errorDetails: Any?) {
         handler.post { Result!!.error(errorCode, errorMessage, errorDetails) }
-    }
-
-    override fun notImplemented() {
-        handler.post { Result!!.notImplemented() }
     }
 
     private val serviceConnection = object : ServiceConnection {
@@ -139,14 +155,6 @@ class HyperpayPlugin : FlutterActivity(), FlutterPlugin, MethodCallHandler,
                 provider.providerMode = Connect.ProviderMode.LIVE
             }
 
-            try {
-                val intent = Intent(mApplicationContext, ConnectService::class.java)
-                startService(intent)
-                bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
-            } catch (e: java.lang.Exception) {
-                e.printStackTrace()
-            }
-
 
             when (brand) {
                 // If the brand is not provided it returns an error result
@@ -180,13 +188,9 @@ class HyperpayPlugin : FlutterActivity(), FlutterPlugin, MethodCallHandler,
 
                         Log.d("Banana", "${transaction.redirectUrl}")
 
-                        // TODO: Initialize binder
-
                         providerBinder?.submitTransaction(transaction)
 
                         Log.d("Banana", "${providerBinder?.isProviderInitialized}")
-
-                        // providerBinder!!.addTransactionListener(this@HyperpayPlugin)
                     } catch (e: PaymentException) {
                         result.error(
                             "0.3",
@@ -254,7 +258,7 @@ class HyperpayPlugin : FlutterActivity(), FlutterPlugin, MethodCallHandler,
             } else {
                 val uri = Uri.parse(transaction!!.redirectUrl)
                 val intent = Intent(Intent.ACTION_VIEW, uri)
-                startActivity(intent)
+                mActivity.startActivity(intent)
             }
         } catch (e: Exception) {
             // Display error
@@ -270,13 +274,6 @@ class HyperpayPlugin : FlutterActivity(), FlutterPlugin, MethodCallHandler,
         )
     }
 
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        if (intent.scheme.equals(mActivity.packageName)) {
-            success("Success: asynchronous 🎉")
-        }
-    }
-
     // // Unbind service after quitting a transaction
     // override fun onStop() {
     //     super.onStop()
@@ -285,21 +282,6 @@ class HyperpayPlugin : FlutterActivity(), FlutterPlugin, MethodCallHandler,
     //     stopService(Intent(this, ConnectService::class.java))
     // }
 
-    override fun onAttachedToActivity(binding: ActivityPluginBinding) {
-        mActivity = binding.activity;
-    }
-
-    override fun onDetachedFromActivityForConfigChanges() {
-        TODO("Not yet implemented")
-    }
-
-    override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
-        TODO("Not yet implemented")
-    }
-
-    override fun onDetachedFromActivity() {
-        TODO("Not yet implemented")
-    }
 
     override fun brandsValidationRequestSucceeded(p0: BrandsValidation?) {
         TODO("Not yet implemented")
