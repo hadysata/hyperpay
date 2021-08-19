@@ -20,7 +20,6 @@ import com.oppwa.mobile.connect.payment.PaymentParams
 import com.oppwa.mobile.connect.payment.card.CardPaymentParams
 import com.oppwa.mobile.connect.provider.Connect
 import com.oppwa.mobile.connect.provider.ITransactionListener
-import com.oppwa.mobile.connect.provider.OppPaymentProvider
 import com.oppwa.mobile.connect.provider.Transaction
 import com.oppwa.mobile.connect.provider.TransactionType
 import com.oppwa.mobile.connect.service.ConnectService
@@ -42,13 +41,19 @@ class HyperpayPlugin : FlutterPlugin, MethodCallHandler, ITransactionListener, A
     /// This local reference serves to register the plugin with the Flutter Engine and unregister it
     /// when the Flutter Engine is detached from the Activity
     private lateinit var channel: MethodChannel
+    private var channelResult: MethodChannel.Result? = null
 
-    // private lateinit var mContext: Context
-    private lateinit var mApplicationContext: Context
     private lateinit var mActivity: Activity
 
+    private var providerBinder: IProviderBinder? = null
+    private lateinit var intent: Intent
+
+    // Get the checkout ID from the endpoint on your server
     private var checkoutID = ""
-    private var mode = ""
+
+    private var paymentMode = ""
+
+    // Card details
     private var brand = Brand.UNKNOWN
     private var cardHolder: String = ""
     private var cardNumber: String = ""
@@ -56,30 +61,29 @@ class HyperpayPlugin : FlutterPlugin, MethodCallHandler, ITransactionListener, A
     private var expiryYear: String = ""
     private var cvv: String = ""
 
-    private var transaction: Transaction? = null
-    private var providerBinder: IProviderBinder? = null
-    private var Result: MethodChannel.Result? = null
+    private var shopperResultUrl: String = ""
 
     override fun onAttachedToEngine(@NonNull flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
         channel = MethodChannel(flutterPluginBinding.binaryMessenger, "hyperpay")
         channel.setMethodCallHandler(this)
-        mApplicationContext = flutterPluginBinding.applicationContext
     }
+
 
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
         mActivity = binding.activity;
+
+        // Remove any underscores from the application ID for Uri parsing
+        // NOTE: It's important to add your application ID as the scheme, followed by ".payments"
+        // without any underscores.
+        shopperResultUrl = mActivity.packageName.replace("_", "")
+        shopperResultUrl += ".payments"
+
         binding.addOnNewIntentListener {
-            if (it.scheme == mActivity.packageName) {
+            if (it.scheme == shopperResultUrl) {
                 success("Success: asynchronous 🎉")
             }
+
             true
-        }
-        try {
-            val intent = Intent(mApplicationContext, ConnectService::class.java)
-            mActivity.startService(intent)
-            mActivity.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
-        } catch (e: java.lang.Exception) {
-            e.printStackTrace()
         }
     }
 
@@ -92,101 +96,131 @@ class HyperpayPlugin : FlutterPlugin, MethodCallHandler, ITransactionListener, A
     }
 
     override fun onDetachedFromActivity() {
-        TODO("Not yet implemented")
+        mActivity.stopService(intent)
+        mActivity.unbindService(serviceConnection)
     }
 
     // Handling result options
     private val handler: Handler = Handler(Looper.getMainLooper())
+
     private fun success(result: Any?) {
-        handler.post { Result!!.success(result) }
+        handler.post { channelResult!!.success(result) }
     }
 
     private fun error(errorCode: String?, errorMessage: String?, errorDetails: Any?) {
-        handler.post { Result!!.error(errorCode, errorMessage, errorDetails) }
+        handler.post { channelResult!!.error(errorCode, errorMessage, errorDetails) }
     }
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-            Log.d("Banana", "service is connected")
+
+            Log.d(TAG, "Hyperpay service is connected, start listening...")
 
             providerBinder = service as IProviderBinder
             providerBinder!!.addTransactionListener(this@HyperpayPlugin)
 
-            providerBinder!!.initializeProvider(Connect.ProviderMode.TEST);
+            if (paymentMode == "LIVE") {
+                providerBinder!!.initializeProvider(Connect.ProviderMode.LIVE);
+            } else {
+                providerBinder!!.initializeProvider(Connect.ProviderMode.TEST);
+            }
+
 
         }
 
         override fun onServiceDisconnected(name: ComponentName) {
+            providerBinder!!.removeTransactionListener(this@HyperpayPlugin)
             providerBinder = null
         }
     }
 
     override fun onMethodCall(@NonNull call: MethodCall, @NonNull result: Result) {
-        if (call.method == "hyperpay") {
-            Result = result
-            val args: Map<String, Any> = call.arguments as Map<String, Any>
-            checkoutID = (args["checkoutID"] as String?)!!
-            mode = (args["mode"] as String?)!!
-            brand = Brand.valueOf(args["brand"].toString())
 
-            val card: Map<String, Any> = args["card"] as Map<String, Any>
-            cardHolder = (card["holder"] as String?)!!
-            cardNumber = (card["number"] as String?)!!
-            expiryMonth = (card["expiryMonth"] as String?)!!
-            expiryYear = (card["expiryYear"] as String?)!!
-            cvv = (card["cvv"] as String?)!!
+        when (call.method) {
+            "setup_service" -> {
+                try {
+                    val args: Map<String, Any> = call.arguments as Map<String, Any>
 
-//            if (mode == "LIVE") {
-//                provider.providerMode = Connect.ProviderMode.LIVE
-//            }
+                    paymentMode = args["mode"] as String
 
+                    // Initialize an application intent to attach to HyperPay service
+                    intent = Intent(mActivity.applicationContext, ConnectService::class.java)
 
-            when (brand) {
-                // If the brand is not provided it returns an error result
-                Brand.UNKNOWN -> result.error(
-                        "0.1",
-                        "Please provide a valid brand",
-                        ""
-                )
-                else -> {
-                    checkCreditCardValid()
+                    // Start and bind with the intent
+                    mActivity.startService(intent)
+                    mActivity.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
 
-                    val paymentParams: PaymentParams = CardPaymentParams(
-                            checkoutID,
-                            brand.name,
-                            cardNumber,
-                            cardHolder,
-                            expiryMonth,
-                            expiryYear,
-                            cvv
-                    )
+                    Log.d(TAG, "Payment mode is set to $paymentMode")
+                    result.success(null)
 
-                    // Set shopper result URL
-                    paymentParams.shopperResultUrl =
-                            "${mActivity.packageName}://result"
+                } catch (e: java.lang.Exception) {
+                    e.printStackTrace()
 
-                    try {
-
-                        val transaction = Transaction(paymentParams)
-
-                        providerBinder?.submitTransaction(transaction)
-
-                    } catch (e: PaymentException) {
-                        result.error(
-                                "0.3",
-                                e.localizedMessage,
-                                ""
-                        )
-                    }
+                    result.error("", e.message, e.stackTrace)
                 }
             }
-        } else {
-            result.notImplemented()
+            "start_payment_transaction" -> {
+                channelResult = result
+
+                val args: Map<String, Any> = call.arguments as Map<String, Any>
+                checkoutID = (args["checkoutID"] as String?)!!
+                brand = Brand.valueOf(args["brand"].toString())
+
+                val card: Map<String, Any> = args["card"] as Map<String, Any>
+                cardHolder = (card["holder"] as String?)!!
+                cardNumber = (card["number"] as String?)!!
+                expiryMonth = (card["expiryMonth"] as String?)!!
+                expiryYear = (card["expiryYear"] as String?)!!
+                cvv = (card["cvv"] as String?)!!
+
+                when (brand) {
+                    // If the brand is not provided it returns an error result
+                    Brand.UNKNOWN -> result.error(
+                            "0.1",
+                            "Please provide a valid brand",
+                            ""
+                    )
+                    else -> {
+                        checkCreditCardValid()
+
+                        val paymentParams: PaymentParams = CardPaymentParams(
+                                checkoutID,
+                                brand.name,
+                                cardNumber,
+                                cardHolder,
+                                expiryMonth,
+                                expiryYear,
+                                cvv
+                        )
+
+                        // Set shopper result URL
+                        paymentParams.shopperResultUrl = "$shopperResultUrl://result"
+
+                        try {
+                            val transaction = Transaction(paymentParams)
+                            providerBinder?.submitTransaction(transaction)
+                        } catch (e: PaymentException) {
+                            result.error(
+                                    "0.3",
+                                    e.localizedMessage,
+                                    ""
+                            )
+                        }
+                    }
+                }
+
+            }
+            else -> {
+                result.notImplemented()
+            }
         }
+
+
     }
 
     /**
-     * This function checks the provided card params and return a PlatformException to Flutter if any are not valid.
+     * This function checks the provided card params and return
+     * a PlatformException to Flutter if any are not valid.
      * */
     private fun checkCreditCardValid() {
         if (!CardPaymentParams.isNumberValid(cardNumber)) {
@@ -222,46 +256,36 @@ class HyperpayPlugin : FlutterPlugin, MethodCallHandler, ITransactionListener, A
         }
     }
 
-    override fun onDetachedFromEngine(@NonNull binding: FlutterPlugin.FlutterPluginBinding) {
-        channel.setMethodCallHandler(null)
-    }
 
-    override fun transactionCompleted(p0: Transaction?) {
+    override fun transactionCompleted(transaction: Transaction?) {
         if (transaction == null) {
             return
         }
 
         try {
-            if (transaction!!.transactionType == TransactionType.SYNC) {
+            if (transaction.transactionType == TransactionType.SYNC) {
                 // Send request to your server to obtain transaction status
-                success("Success: synchronous 🎉")
+                success("Transaction completed as synchronous.")
             } else {
-                val uri = Uri.parse(transaction!!.redirectUrl)
+                val uri = Uri.parse(transaction.redirectUrl)
                 val intent = Intent(Intent.ACTION_VIEW, uri)
                 mActivity.startActivity(intent)
             }
         } catch (e: Exception) {
+            e.printStackTrace()
+
             // Display error
-            error("Error ☹️")
+            error("${e.message}️")
         }
     }
 
-    override fun transactionFailed(p0: Transaction?, p1: PaymentError?) {
+    override fun transactionFailed(transaction: Transaction?, error: PaymentError?) {
         error(
-                "${p1?.errorCode}",
-                "Error ☹️ + ${p1?.errorMessage}",
-                "${p1?.errorInfo}"
+                "${error?.errorCode}",
+                "${error?.errorMessage}",
+                "${error?.errorInfo}"
         )
     }
-
-    // // Unbind service after quitting a transaction
-    // override fun onStop() {
-    //     super.onStop()
-    //
-    //     unbindService(serviceConnection)
-    //     stopService(Intent(this, ConnectService::class.java))
-    // }
-
 
     override fun brandsValidationRequestSucceeded(p0: BrandsValidation?) {
         TODO("Not yet implemented")
@@ -285,5 +309,9 @@ class HyperpayPlugin : FlutterPlugin, MethodCallHandler, ITransactionListener, A
 
     override fun paymentConfigRequestFailed(p0: PaymentError?) {
         TODO("Not yet implemented")
+    }
+
+    override fun onDetachedFromEngine(@NonNull binding: FlutterPlugin.FlutterPluginBinding) {
+        channel.setMethodCallHandler(null)
     }
 }
