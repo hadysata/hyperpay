@@ -10,10 +10,10 @@ This plugin is a wrapper around [HyperPay iOS and Android SDK](https://wordpress
 [![pub package](https://img.shields.io/pub/v/hyperpay.svg)](https://pub.dev/packages/hyperpay)
 
 ## Support Checklist
-✔️ Brands: **VISA**, **MasterCard**, **MADA**
-<br />✔️ Get a checkout ID
-<br />✔️ Get payment status
-<br />✔️ Perform sync/async payment
+✔️ Credit Card payment **VISA**, **MasterCard**
+<br />✔️ Local Saudi payment with **MADA**
+<br />✔️ Apple Pay
+<br />✔️ Check payment status
 <br />✔️ Custom UI
 <br />✖️ Ready UI
 
@@ -31,6 +31,8 @@ target 'Runner' do
   use_modular_headers!
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+  # Add from here
+  pod 'oppwamobile', :git => 'https://github.com/nyartech/oppwamobile-ios-sdk.git'
 
   $static_framework = ['hyperpay']
 
@@ -44,30 +46,40 @@ target 'Runner' do
         end
       end
   end
+  # To here
 end
 ```
 
 ### Android Setup
-1. Download the oppwa.mobile android SDK.
-2. Assuming you are using VS Code, right click on the android folder and click **Open in Android Studio**.
-3. Switch to **project** view.
-4. Right click on your main app directory, then click **New > Directory**, name it `oppwa.mobile`.
-5. Drag and drop the `aar` file you just downloaded into the directory.
-6. Copy [this build.gradle file](https://github.com/nyartech/hyperpay/blob/main/example/android/oppwa.mobile/build.gradle) content and make a new file inside the same directory with same content.
-7. Open `android/app/build.gradle` and add the following lines:
+1. Open `android/app/build.gradle` and add the following lines:
 ```
 implementation project(":oppwa.mobile")
+implementation (name:'oppwa.mobile-4.5.0-release', ext:'aar')
 ```
-8. Open `app/build.gradle` and make sure that the `minSdkVersion` is **21**
-9. Open settings.gradle, and make sure you have this line to the top:
-```
-include ':oppwa.mobile'
-```
-10. Click on **Build > Make Project**.
-11. Open your [AndroidManifest.xml](https://github.com/nyartech/hyperpay/blob/main/example/android/app/src/main/AndroidManifest.xml), and make sure it looks like the example app.
+2. Open `app/build.gradle` and make sure that the `minSdkVersion` is **21**, and `compileSdkVersion` is **33**.
+3. Open your [AndroidManifest.xml](https://github.com/nyartech/hyperpay/blob/main/example/android/app/src/main/AndroidManifest.xml), and make sure it looks like the example app.
 <br />**IMPORTANT:** the scheme you choose should match exactly your application ID but without any underscores, and then append `.payments` to it. 
 <br />For example: `com.nyartech.hyperpay_example` becomes `com.nyartech.hyperpayexample.payments`
 
+#### Migration to v1.0.0
+On older versions of the plugin, adding the AAR SDK file manually on Android was required. Now it's not. To migrate:
+1. Remove any of these dependencies in your `app/build.gradle`:
+  ```groovy
+  implementation project(":oppwa.mobile")
+  implementation "androidx.appcompat:appcompat:1.3.1"
+  implementation "com.google.android.material:material:1.4.0"
+  implementation "com.google.android.gms:play-services-base:17.6.0"
+  ```
+2. Add a dependency over the AAR file:
+  ```groovy
+  implementation (name:'oppwa.mobile-4.5.0-release', ext:'aar')
+  ```
+3. in `settings.gradle`, remove the following line:
+  ```groovy
+  include ':oppwa.mobile'
+  ```
+4. Finally, remove the folder `oppwa.mobile` from the root `android` folder in your app.
+  
 ### Setup Required Endpoints
 It's important to setup your own server with 2 endpoints:
 1. Get Checkout ID
@@ -75,7 +87,7 @@ It's important to setup your own server with 2 endpoints:
 
 Find full details on [set up your server](https://wordpresshyperpay.docs.oppwa.com/tutorials/mobile-sdk/integration/server) page.
 
-After that, setup 2 `Uri` objects with your endpoints specifications, refer to [`example/lib/config`](https://github.com/nyartech/hyperpay/blob/main/example/lib/endpoint_setup.dart) for an example.
+After that, setup 2 `Uri` objects with your endpoints specifications, refer to [`example/lib/constants`](https://github.com/nyartech/hyperpay/blob/main/example/lib/constants.dart) for an example.
 
 ```dart
 String _host = 'YOUR_HOST';
@@ -93,21 +105,35 @@ Uri statusEndpoint = Uri(
 );
 ```
 
-### Setup HyperPay App Configuration
+### Setup HyperPay Environment Configuration
 
 The first time you launch your app, setup the plugin with your configurations, it's highly recommended to use flavors to switch between modes.
 
-Implement `HyperpayConfig` class and put your merchant entity IDs provided by HyperPay.
+Implement `HyperpayConfig` class and put your merchant entity IDs as provided to you by HyperPay.
 
 ```dart
 class TestConfig implements HyperpayConfig {
+  @override
   String? creditcardEntityID = '';
+
+  @override
   String? madaEntityID = '';
+
+  @override
+  String? applePayEntityID = '';
+
+  @override
+  Uri checkoutEndpoint = _checkoutEndpoint;
+
+  @override
+  Uri statusEndpoint = _statusEndpoint;
+
+  @override
   PaymentMode paymentMode = PaymentMode.test;
 }
 ```
 
-Then you might consider using **dart environment variables** to switch between Test and Live modes.
+Then you might consider using **Dart environment variables** to switch between Test and Live modes.
 
 ```dart
 const bool isDev = bool.fromEnvironment('DEV');
@@ -115,8 +141,6 @@ const bool isDev = bool.fromEnvironment('DEV');
 void setup() async {
   await HyperpayPlugin.instance.setup(
     config: isDev? TestConfig() : LiveConfig(),
-    checkoutEndpoint: checkoutEndpoint,
-    statusEndpoint: statusEndpoint,
   );
 }
 ```

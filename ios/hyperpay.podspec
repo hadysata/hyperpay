@@ -13,16 +13,15 @@ A new flutter plugin project.
   s.license          = { :file => '../LICENSE' }
   s.author           = { 'Your Company' => 'email@example.com' }
   s.source           = { :path => '.' }
-  s.source_files = 'Classes/**/*'
   s.dependency 'Flutter'
   s.platform = :ios, '8.0'
 
-  # Flutter.framework does not contain a i386 slice.
-  s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386' }
+  s.source_files     = 'Classes/**/*'
+  
+  # Flutter.framework does not contain a i386 slice. Only x86_64 simulators are supported.
+  s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'VALID_ARCHS[sdk=iphonesimulator*]' => 'x86_64' }
   s.swift_version = '5.0'
+  s.frameworks  = 'PassKit'
 
-  s.preserve_paths = 'OPPWAMobile.xcframework'
-  s.xcconfig = { 'OTHER_LDFLAGS' => '-framework OPPWAMobile' }
-  s.vendored_frameworks = 'OPPWAMobile.xcframework'
-
+  s.dependency 'oppwamobile', '~> 4.8.0'
 end

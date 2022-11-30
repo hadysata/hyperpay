@@ -1,9 +1,9 @@
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 class CardMonthInputFormatter extends TextInputFormatter {
   @override
-  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
     var newText = newValue.text;
 
     if (newValue.selection.baseOffset == 0) {
@@ -20,13 +20,16 @@ class CardMonthInputFormatter extends TextInputFormatter {
     }
 
     var string = buffer.toString();
-    return newValue.copyWith(text: string, selection: TextSelection.collapsed(offset: string.length));
+    return newValue.copyWith(
+        text: string,
+        selection: TextSelection.collapsed(offset: string.length));
   }
 }
 
 class CardNumberInputFormatter extends TextInputFormatter {
   @override
-  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
     var text = newValue.text;
 
     if (newValue.selection.baseOffset == 0) {
@@ -44,6 +47,8 @@ class CardNumberInputFormatter extends TextInputFormatter {
     }
 
     var string = buffer.toString();
-    return newValue.copyWith(text: string, selection: TextSelection.collapsed(offset: string.length));
+    return newValue.copyWith(
+        text: string,
+        selection: TextSelection.collapsed(offset: string.length));
   }
 }

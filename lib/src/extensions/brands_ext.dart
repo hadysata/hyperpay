@@ -1,4 +1,8 @@
-import 'package:hyperpay/hyperpay.dart';
+// Copyright 2022 NyarTech LLC. All rights reserved.
+// Use of this source code is governed by a BSD-style license
+// that can be found in the LICENSE file.
+
+part of hyperpay;
 
 // Regular experessions for each brand
 // These expressions were chosen according to this article.
@@ -18,7 +22,8 @@ extension DetectBrand on String {
   BrandType get detectBrand {
     final cleanNumber = this.replaceAll(' ', '');
 
-    bool _isMADA = _madaRegExpM.hasMatch(cleanNumber) || _madaRegExpV.hasMatch(cleanNumber);
+    bool _isMADA = _madaRegExpM.hasMatch(cleanNumber) ||
+        _madaRegExpV.hasMatch(cleanNumber);
     bool _isVISA = _visaRegExp.hasMatch(cleanNumber);
     bool _isMASTERCARD = _mastercardRegExp.hasMatch(cleanNumber);
 
@@ -27,7 +32,7 @@ extension DetectBrand on String {
     } else if (_isVISA) {
       return BrandType.visa;
     } else if (_isMASTERCARD) {
-      return BrandType.mastercard;
+      return BrandType.master;
     } else {
       return BrandType.none;
     }
@@ -35,22 +40,6 @@ extension DetectBrand on String {
 }
 
 extension BrandTypeExtension on BrandType {
-  /// String representation for each card type as mentioned in HyperPay docs.
-  ///
-  /// https://wordpresshyperpay.docs.oppwa.com/reference/parameters
-  String get asString {
-    switch (this) {
-      case BrandType.visa:
-        return 'VISA';
-      case BrandType.mastercard:
-        return 'MASTER';
-      case BrandType.mada:
-        return 'MADA';
-      default:
-        return '';
-    }
-  }
-
   /// Get the entity ID of this brand based on merchant configuration.
   String? entityID(HyperpayConfig config) {
     String? _entityID = '';
@@ -58,11 +47,14 @@ extension BrandTypeExtension on BrandType {
       case BrandType.visa:
         _entityID = config.creditcardEntityID;
         break;
-      case BrandType.mastercard:
+      case BrandType.master:
         _entityID = config.creditcardEntityID;
         break;
       case BrandType.mada:
         _entityID = config.madaEntityID;
+        break;
+      case BrandType.applepay:
+        _entityID = config.applePayEntityID;
         break;
 
       default:
@@ -88,7 +80,7 @@ extension BrandTypeExtension on BrandType {
         } else {
           return "Inavlid VISA number";
         }
-      case BrandType.mastercard:
+      case BrandType.master:
         if (_mastercardRegExp.hasMatch(cleanNumber)) {
           return null;
         } else if (cleanNumber.isEmpty) {
@@ -97,7 +89,8 @@ extension BrandTypeExtension on BrandType {
           return "Inavlid MASTER CARD number";
         }
       case BrandType.mada:
-        if (_madaRegExpV.hasMatch(cleanNumber) || _madaRegExpM.hasMatch(cleanNumber)) {
+        if (_madaRegExpV.hasMatch(cleanNumber) ||
+            _madaRegExpM.hasMatch(cleanNumber)) {
           return null;
         } else if (cleanNumber.isEmpty) {
           return "Required";
@@ -116,7 +109,7 @@ extension BrandTypeExtension on BrandType {
     switch (this) {
       case BrandType.visa:
         return 16;
-      case BrandType.mastercard:
+      case BrandType.master:
         return 16;
       case BrandType.mada:
         return 16;
